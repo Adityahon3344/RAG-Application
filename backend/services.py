@@ -24,12 +24,10 @@ def create_prompt(question: str) -> str:
     prompt_template = ChatPromptTemplate.from_template("""
         You are a helpful AI assistant.
 
-        Answer the user's question using only the
-        information provided in the context.
-
-        If the answer is not available in the context,
-        respond with:
-        "I don't know based on the provided information."
+        Use relevant information from the context when it helps answer
+        questions about the user's documents. If the context is empty or
+        does not answer the question, respond using your general knowledge.
+        Do not present general knowledge as if it came from the documents.
 
         Context:
         {context}

@@ -79,6 +79,40 @@ python -m uvicorn main:app --reload
 
 Open: http://127.0.0.1:8000
 
+### Run the local placement registration form
+
+From the project root, run:
+
+```bash
+backend/myvenv/bin/streamlit run frontend/frontend2.py --server.address 127.0.0.1 --server.port 8502
+```
+
+Open http://127.0.0.1:8502. Applications are appended to
+`data/job_application.txt`; uploaded resumes, photos, and videos are saved in
+`data/job_application_uploads/`. These files stay on this computer and are
+not sent to Google or a company automatically. Allow camera access for
+localhost if you want to take a live photo.
+
+### Run the Placement Assistant chat
+
+Start the agent API from the `backend` directory:
+
+```bash
+cd backend
+myvenv/bin/python -m uvicorn main2:app --host 127.0.0.1 --port 8002
+```
+
+In a second terminal from the project root, start the chat frontend:
+
+```bash
+BACKEND_URL=http://127.0.0.1:8002 backend/myvenv/bin/streamlit run frontend/frontend.py --server.address 127.0.0.1 --server.port 8503
+```
+
+Open http://127.0.0.1:8503. Conversations are saved locally in
+`data/agent_chat_history.sqlite3`; the latest ten messages (five exchanges)
+are sent to Gemini as context for follow-up questions. **Clear Chat History**
+deletes all locally saved conversations.
+
 ## 👨‍💻 Author
 
 **Aditya Ashok Hon**

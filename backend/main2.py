@@ -1,5 +1,7 @@
+from typing import Literal
+
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import addData, getData
 from service import findResponse
@@ -11,8 +13,14 @@ class DocumentInput(BaseModel):
     documents: list[str]
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatInput(BaseModel):
     prompt: str
+    history: list[ChatMessage] = Field(default_factory=list)
 
 
 @app.get("/")
@@ -33,7 +41,11 @@ def getCollectionData():
 
 @app.post("/chat")
 def getResponse(query: ChatInput):
-    result = findResponse(query.prompt)
+    history = [
+        {"role": message.role, "content": message.content}
+        for message in query.history
+    ]
+    result = findResponse(query.prompt, history)
 
     return {
         "response": result["answer"],

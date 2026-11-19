@@ -1,6 +1,9 @@
 import html
 import io
 import os
+import sqlite3
+from uuid import UUID, uuid4
+
 import streamlit as st
 import requests
 import xml.etree.ElementTree as ET
@@ -8,6 +11,12 @@ import zipfile
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
+from chat_history import (
+    clear_chat_history,
+    initialize_chat_history,
+    load_chat_messages,
+    save_chat_message,
+)
 from chunking import split_text
 
 st.set_page_config(
@@ -405,8 +414,33 @@ footer {
 """, unsafe_allow_html=True)
 
 
+try:
+    initialize_chat_history()
+except (OSError, sqlite3.Error) as error:
+    st.error(f"Could not initialize chat history: {error}")
+    st.stop()
+
+if "conversation_id" not in st.session_state:
+    query_conversation_id = st.query_params.get("conversation_id")
+    try:
+        conversation_id = (
+            str(UUID(query_conversation_id))
+            if query_conversation_id
+            else str(uuid4())
+        )
+    except ValueError:
+        conversation_id = str(uuid4())
+    st.session_state.conversation_id = conversation_id
+    st.query_params["conversation_id"] = conversation_id
+
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    try:
+        st.session_state.messages = load_chat_messages(
+            st.session_state.conversation_id
+        )
+    except sqlite3.Error as error:
+        st.error(f"Could not load saved chat history: {error}")
+        st.stop()
 
 if "documents" not in st.session_state:
     st.session_state.documents = []
@@ -499,23 +533,25 @@ def upload_documents(files):
         st.rerun()
 
 
-def ask_question(question):
+def ask_question(question, history):
     try:
         response = requests.post(
             f"{BACKEND_URL}/chat",
-            json={"prompt": question},
+            json={"prompt": question, "history": history[-10:]},
             timeout=120
         )
 
         response.raise_for_status()
         payload = response.json()
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("response"), str
+        ):
             return {
-                "answer": "The RAG service returned an invalid response.",
+                "answer": "The agent returned an invalid response.",
                 "sources": []
             }
         return {
-            "answer": payload.get("response", "No answer returned."),
+            "answer": payload["response"],
             "sources": []
         }
 
@@ -594,6 +630,9 @@ with st.sidebar:
         use_container_width=True,
         icon=":material/add:"
     ):
+        conversation_id = str(uuid4())
+        st.session_state.conversation_id = conversation_id
+        st.query_params["conversation_id"] = conversation_id
         st.session_state.messages = []
         st.rerun()
 
@@ -602,8 +641,16 @@ with st.sidebar:
         use_container_width=True,
         icon=":material/delete_outline:"
     ):
-        st.session_state.messages = []
-        st.rerun()
+        try:
+            clear_chat_history()
+        except sqlite3.Error as error:
+            st.error(f"Could not clear saved chat history: {error}")
+        else:
+            conversation_id = str(uuid4())
+            st.session_state.conversation_id = conversation_id
+            st.query_params["conversation_id"] = conversation_id
+            st.session_state.messages = []
+            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -632,6 +679,10 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+st.caption(
+    "Chat history is saved locally. The previous five exchanges are sent "
+    "to Gemini to help answer follow-up questions."
+)
 
 if not st.session_state.messages:
 
@@ -713,10 +764,22 @@ if st.session_state.pending_question:
 
 if prompt:
 
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
+    history = [
+        {"role": message["role"], "content": message["content"]}
+        for message in st.session_state.messages[-10:]
+    ]
+
+    try:
+        save_chat_message(
+            st.session_state.conversation_id,
+            "user",
+            prompt,
+        )
+    except sqlite3.Error as error:
+        st.error(f"Could not save your question: {error}")
+        st.stop()
+
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("user", avatar=":material/person:"):
         st.markdown(prompt)
@@ -725,7 +788,7 @@ if prompt:
 
         with st.spinner("Retrieving relevant knowledge..."):
 
-            result = ask_question(prompt)
+            result = ask_question(prompt, history)
 
             answer = result.get(
                 "answer",
@@ -744,10 +807,21 @@ if prompt:
                     for source in sources:
                         st.markdown(f"- {source}")
 
-    st.session_state.messages.append({
+    assistant_message = {
         "role": "assistant",
         "content": answer,
         "sources": sources
-    })
+    }
+    st.session_state.messages.append(assistant_message)
+
+    try:
+        save_chat_message(
+            st.session_state.conversation_id,
+            "assistant",
+            answer,
+        )
+    except sqlite3.Error as error:
+        st.error(f"Could not save the assistant response: {error}")
+        st.stop()
 
     st.rerun()

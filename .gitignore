@@ -21,6 +21,10 @@ chroma_db/
 # Uploaded files and generated data
 uploads/
 *.pdf
+data/placement_registrations.sqlite3
+data/job_application.txt
+data/job_application_uploads/
+data/agent_chat_history.sqlite3
 
 # Streamlit
 .streamlit/secrets.toml

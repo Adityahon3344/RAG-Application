@@ -114,13 +114,24 @@ tool_registry = {
 }
 
 
-def findResponse(question: str):
-    contents = [
+def findResponse(question: str, history: list[dict[str, str]] | None = None):
+    contents = []
+
+    for message in (history or [])[-10:]:
+        role = "model" if message["role"] == "assistant" else "user"
+        contents.append(
+            types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=message["content"])]
+            )
+        )
+
+    contents.append(
         types.Content(
             role="user",
             parts=[types.Part.from_text(text=question)]
         )
-    ]
+    )
 
     tools_used = []
 
@@ -147,6 +158,7 @@ def findResponse(question: str):
                    for missing information when necessary.
 
                 Use the appropriate tool when the user's request needs it.
+                Use the conversation history to understand follow-up questions.
                 If the user asks a question about documents, use rag_search
                 instead of answering from general knowledge.
                 If the user asks for a purchase total, use the calculator.
